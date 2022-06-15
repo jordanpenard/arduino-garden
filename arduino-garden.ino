@@ -107,6 +107,14 @@ void IRAM_ATTR TimerHandler() {
   ISR_Timer.run();
 }
 
+void stop_pump() {
+  digitalWrite(PUMP, LOW);
+}
+
+void start_pump() {
+  digitalWrite(PUMP, HIGH);
+}
+
 void one_minute_int() {
   if (minutes >= 59) {
     if (hours >= 23) {
@@ -116,6 +124,13 @@ void one_minute_int() {
     minutes = 0;
   } else
     minutes++;
+
+  if ((hours == WATERING_HOUR) && (minutes == WATERING_MINUTE)) {        
+    if (analogRead(MOISTURE_SENSOR) < MOISTURE_THREASHOLD){
+      start_pump(); 
+      ISR_Timer.setTimeout(WATERING_DURATION_SEC * 1000, stop_pump);
+    }
+  }
 }
 
 void setup() {
@@ -144,21 +159,7 @@ void setup() {
 
 
 void loop() {
-  if ((hours == WATERING_HOUR) && (minutes == WATERING_MINUTE)) {
-    Serial.println("It's watering time");
-    
     int moisture_sensor = analogRead(MOISTURE_SENSOR);
-    Serial.println("Moisture sensor reading : " + moisture_sensor);
-    
-    // TODO check moisture sensor
-    if (true){
-      Serial.println("We are watering the plants");
-      digitalWrite(PUMP, HIGH);  
-      delay(WATERING_DURATION_SEC * 1000);
-      digitalWrite(PUMP, LOW);
-    } else {
-      Serial.println("No need to water the plants");
-    }
-  }
-  delay(60000);
+    Serial.println(hours + (String)":" + minutes + (String)"Moisture sensor reading : " + moisture_sensor);
+    delay(60000);
 }
