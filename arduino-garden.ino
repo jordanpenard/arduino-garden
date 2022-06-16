@@ -11,26 +11,7 @@
 
 #include "config.h"
 
-// -----------
-// Timer stuff
 
-#include "ESP8266TimerInterrupt.h"
-#include "ESP8266_ISR_Timer.h"
-
-#define USING_TIM_DIV1                false           // for shortest and most accurate timer
-#define USING_TIM_DIV16               false           // for medium time and medium accurate timer
-#define USING_TIM_DIV256              true            // for longest timer but least accurate. Default
-#define HW_TIMER_INTERVAL_MS          50L
-#define TIMER_INTERVAL_60S            60000L
-
-// Init ESP8266 timer 1
-ESP8266Timer ITimer;
-
-// Init ESP8266_ISR_Timer
-ESP8266_ISR_Timer ISR_Timer;
-
-
-  
 // -----------
 // HTTP server
 
@@ -48,6 +29,7 @@ unsigned long lastNTPResponse = 0;
   
 uint32_t timeUNIX = 0;                      // The most recent timestamp received from the time server
 uint32_t last_watering = 0;
+uint32_t stop_watering = 0;
 uint32_t last_data_gathering = 0;
 
 uint32_t get_unixtimestamp() {
@@ -185,69 +167,6 @@ void handleNotFound() {
 
   return replyNotFound(message);
 }
-/*
-String get_json_data() {
-  String json;
-  json.reserve(88);
-    
-  String moisture_data = "[";
-  String pump_data = "[";
-  String labels = "[";
-  bool first = true;
-  
-  for (int i = 0; i < history_count; i++) {
-    int x = i;
-    if (history_count == HISTORY_DEPTH) {
-      if (history_index + i >= HISTORY_DEPTH)
-        x = history_index + i - HISTORY_DEPTH;
-      else
-        x = history_index + i;
-    }
-
-    if (first == false) {
-      moisture_data += ", ";
-      pump_data += ", ";
-      labels += ", ";
-    }
-    first = false;
-    moisture_data += history_moisture[x]/1000.0;
-    pump_data += history_pump[x];
-    labels += i;
-  }
-  moisture_data += "]";
-  pump_data += "]";
-  labels += "]";
-
-  json = "{labels: " + labels + ", datasets: [{";
-  json += "  type: 'line',";
-  json += "  label: 'Soil moisture',";
-  json += "  data: " + moisture_data + ",";
-  json += "  fill: false,";
-  json += "  borderColor: 'rgb(54, 162, 235)',";
-  json += "  backgroundColor: 'rgb(54, 162, 235)',";
-  json += "  tension: 0.1";
-  json += "},{";
-  json += "  type: 'line',";
-  json += "  label: 'Pump',";
-  json += "  data: " + pump_data + ",";
-  json += "  fill: true,";
-  json += "  borderColor: 'rgb(255, 99, 132)',";
-  json += "  backgroundColor: 'rgba(255, 99, 132, 0.2)',";
-  json += "  tension: 0.1";
-  json += "}]};";
-
-  return json;
-}
-
-String get_webpage() {
-  String webpage = "<html><head><script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script></head>\n";
-  webpage += "<body><div><canvas id=\"myChart\"></canvas></div><script>\n";
-  webpage += "const data = " + get_json_data() + "\n";
-  webpage += "const config = {type: 'line', data: data};\n";
-  webpage += "const myChart = new Chart(document.getElementById('myChart'), config);\n";
-  webpage += "</script></body></html>";
-  return webpage;
-}*/
 
 String getContentType(String filename) { // convert the file extension to the MIME type
   if (filename.endsWith(".html")) return "text/html";
@@ -272,12 +191,7 @@ bool handleFileRead(String path) { // send the right file to the client (if it e
 }
 
 void setup_http_server() {
-/*
-  //get heap status, analog input value and all GPIO statuses in one json call
-  server.on("/", HTTP_GET, []() {
-    server.send(200, "text/html", get_webpage());
-  });
-*/
+
   // Default handler for all URIs not defined above
   // Use it to read files from filesystem
   server.onNotFound([]() {                              // If the client requests any URI
@@ -375,6 +289,7 @@ void connect_to_wifi() {
     else
       i++;
   }
+  Serial.println("");
 
   log((String)"IP address: " + WiFi.localIP().toString());
 }
@@ -390,7 +305,7 @@ void start_pump() {
 }
 
 void startOTA() {
-  ArduinoOTA.setHostname("ESP8266");
+  ArduinoOTA.setHostname("arduino-garden");
   ArduinoOTA.setPassword("arduino-garden");
 
   ArduinoOTA.onStart([]() {
@@ -431,13 +346,17 @@ void setup() {
   connect_to_wifi();
   
   get_internet_time();
-  log("Internet time : " + get_formated_time());
-
-  log((String)"Watering intervals " + WATERING_INTERVALS_IN_HOURS);
   
   setup_http_server();
  
   startOTA();                  // Start the OTA service
+
+  log("------------");
+  log("Setup is done\n");
+  log("Internet time : " + get_formated_time());
+  log((String)"Watering intervals in hours : " + WATERING_INTERVALS_IN_HOURS);
+  log((String)"Watering duration in seconds : " + WATERING_DURATION_SEC);
+  log((String)"Moisture threashold : " + MOISTURE_THREASHOLD);
 }
 
 void gather_data() {
@@ -459,8 +378,8 @@ void gather_data() {
 void watering_check() {
   if (analogRead(MOISTURE_SENSOR) > MOISTURE_THREASHOLD){
     log("It's watering time");
-    start_pump(); 
-    ISR_Timer.setTimeout(WATERING_DURATION_SEC * 1000, stop_pump);
+    start_pump();
+    stop_watering = get_unixtimestamp() + WATERING_DURATION_SEC;
   } else {
     log("No need to water the plants");
   }
@@ -472,6 +391,11 @@ void loop() {
   if (get_unixtimestamp() - prevNTP > intervalNTP) { // Request the time from the time server every day
     prevNTP = get_unixtimestamp();
     get_internet_time();
+  }
+
+  // Check if we need to switch the pump off
+  if (digitalRead(PUMP) && (get_unixtimestamp() >= stop_watering)) {
+    stop_pump();
   }
 
   // Time to check if the plants need watering
