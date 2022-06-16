@@ -5,11 +5,11 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
-#include <NTPClient.h>
 #include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+#include <FS.h>
 
 #include "config.h"
-
 
 // -----------
 // Timer stuff
@@ -30,6 +30,7 @@ ESP8266Timer ITimer;
 ESP8266_ISR_Timer ISR_Timer;
 
 
+  
 // -----------
 // HTTP server
 
@@ -39,25 +40,90 @@ static const char TEXT_PLAIN[] PROGMEM = "text/plain";
 
 
 // -----------
-// Data loging
-
-int history_moisture[HISTORY_DEPTH];
-bool history_pump[HISTORY_DEPTH];
-int history_index = 0;
-int history_count = 0;
-
-
-// -----------
 // Keeping track of time
 
-uint8_t hours = 2;
-uint8_t minutes = 0;
-bool is_dst = false;
+const unsigned long intervalNTP = 86400UL; // Update the time every day
+unsigned long prevNTP = 0;
+unsigned long lastNTPResponse = 0;
+  
+uint32_t timeUNIX = 0;                      // The most recent timestamp received from the time server
+uint32_t last_watering = 0;
+uint32_t last_data_gathering = 0;
 
-String get_time() {
-  char formated_time[5];
-  sprintf(formated_time, "%02d:%02d", hours, minutes);
+uint32_t get_unixtimestamp() {
+  return timeUNIX + (millis() - lastNTPResponse) / 1000;
+}
+
+String get_formated_time() {
+
+  if (timeUNIX == 0)
+    return "";
+  
+  // Get a time structure
+  time_t epochTime = get_unixtimestamp();
+  struct tm *ptm = gmtime((time_t *)&epochTime);
+  
+  char formated_time[16];
+  sprintf(formated_time, "%02d/%02d/%04d %02d:%02d", ptm->tm_mday, ptm->tm_mon+1, ptm->tm_year+1900, ptm->tm_hour, ptm->tm_min);
+
   return (String)formated_time;
+}
+
+void log(String data) {
+  Serial.println(get_formated_time() + " - " + data);
+  File dataLog = SPIFFS.open("/log.txt", "a");
+  dataLog.print(get_formated_time() + " - " + data + "\n");
+  dataLog.close();
+}
+
+void get_internet_time() {
+
+  const char* ntpServerName = "time.nist.gov";
+
+  const int NTP_PACKET_SIZE = 48;  // NTP time stamp is in the first 48 bytes of the message
+  byte NTPBuffer[NTP_PACKET_SIZE];     // A buffer to hold incoming and outgoing packets
+
+  IPAddress timeServerIP;        // The time.nist.gov NTP server's IP address
+  WiFiUDP UDP;                   // Create an instance of the WiFiUDP class to send and receive UDP messages
+  
+  UDP.begin(123); 
+
+  if(!WiFi.hostByName(ntpServerName, timeServerIP)) { // Get the IP address of the NTP server
+    log("DNS lookup failed. Rebooting.");
+    ESP.reset();
+  }
+  
+  log((String)"Time server IP : " + timeServerIP.toString());
+
+  memset(NTPBuffer, 0, NTP_PACKET_SIZE);  // set all bytes in the buffer to 0
+  // Initialize values needed to form NTP request
+  NTPBuffer[0] = 0b11100011;   // LI, Version, Mode
+  // send a packet requesting a timestamp:
+  UDP.beginPacket(timeServerIP, 123); // NTP requests are to port 123
+  UDP.write(NTPBuffer, NTP_PACKET_SIZE);
+  UDP.endPacket();  
+  int i = 0;
+  while (UDP.parsePacket() == 0) {
+    if (i > 20)
+      ESP.reset();
+    delay(500);
+    i++;
+  }
+
+  UDP.read(NTPBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
+  // Combine the 4 timestamp bytes into one 32-bit number
+  uint32_t NTPTime = (NTPBuffer[40] << 24) | (NTPBuffer[41] << 16) | (NTPBuffer[42] << 8) | NTPBuffer[43];
+  
+  // Convert NTP time to a UNIX timestamp:
+  // Unix time starts on Jan 1 1970. That's 2208988800 seconds in NTP time:
+  const uint32_t seventyYears = 2208988800UL;
+  // subtract seventy years:
+  timeUNIX = NTPTime - seventyYears;
+
+  log((String)"NTPTime : " + NTPTime);
+  log((String)"Unix epoch time : " + timeUNIX);
+
+  lastNTPResponse = millis();
 }
 
 
@@ -79,12 +145,12 @@ void replyNotFound(String msg) {
 }
 
 void replyBadRequest(String msg) {
-  Serial.println(msg);
+  log(msg);
   server.send(400, FPSTR(TEXT_PLAIN), msg + "\r\n");
 }
 
 void replyServerError(String msg) {
-  Serial.println(msg);
+  log(msg);
   server.send(500, FPSTR(TEXT_PLAIN), msg + "\r\n");
 }
 
@@ -115,12 +181,11 @@ void handleNotFound() {
   }
   message += "path=";
   message += server.arg("path");
-  message += '\n';
-  Serial.print(message);
+  log(message);
 
   return replyNotFound(message);
 }
-
+/*
 String get_json_data() {
   String json;
   json.reserve(88);
@@ -182,18 +247,43 @@ String get_webpage() {
   webpage += "const myChart = new Chart(document.getElementById('myChart'), config);\n";
   webpage += "</script></body></html>";
   return webpage;
+}*/
+
+String getContentType(String filename) { // convert the file extension to the MIME type
+  if (filename.endsWith(".html")) return "text/html";
+  else if (filename.endsWith(".css")) return "text/css";
+  else if (filename.endsWith(".js")) return "application/javascript";
+  else if (filename.endsWith(".ico")) return "image/x-icon";
+  return "text/plain";
+}
+
+bool handleFileRead(String path) { // send the right file to the client (if it exists)
+  log("handleFileRead: " + path);
+  if (path.endsWith("/")) path += "index.html";         // If a folder is requested, send the index file
+  String contentType = getContentType(path);            // Get the MIME type
+  if (SPIFFS.exists(path)) {                            // If the file exists
+    File file = SPIFFS.open(path, "r");                 // Open it
+    size_t sent = server.streamFile(file, contentType); // And send it to the client
+    file.close();                                       // Then close the file again
+    return true;
+  }
+  log("\tFile Not Found");
+  return false;                                         // If the file doesn't exist, return false
 }
 
 void setup_http_server() {
-  
+/*
   //get heap status, analog input value and all GPIO statuses in one json call
   server.on("/", HTTP_GET, []() {
     server.send(200, "text/html", get_webpage());
   });
-
+*/
   // Default handler for all URIs not defined above
   // Use it to read files from filesystem
-  server.onNotFound(handleNotFound);
+  server.onNotFound([]() {                              // If the client requests any URI
+    if (!handleFileRead(server.uri()))                  // send it if it exists
+      handleNotFound();                                 // otherwise, respond with a 404 (Not Found) error
+  });
 
   // Start server
   server.begin();
@@ -203,11 +293,69 @@ void setup_http_server() {
 // -----------
 // 
 
-void connect_to_wifi() {
+void startSPIFFS() { // Start the SPIFFS and list all contents
+ 
+  Serial.println(F("Inizializing FS..."));
+  if (SPIFFS.begin()){
+      Serial.println(F("done."));
+  }else{
+      Serial.println(F("fail."));
+  }
+
+  // To format all space in SPIFFS
+  //SPIFFS.format();
+
+  // Get all information of your SPIFFS
+  FSInfo fs_info;
+  SPIFFS.info(fs_info);
+
+  Serial.println("File sistem info.");
+
+  Serial.print("Total space:      ");
+  Serial.print(fs_info.totalBytes);
+  Serial.println("byte");
+
+  Serial.print("Total space used: ");
+  Serial.print(fs_info.usedBytes);
+  Serial.println("byte");
+
+  Serial.print("Block size:       ");
+  Serial.print(fs_info.blockSize);
+  Serial.println("byte");
+
+  Serial.print("Page size:        ");
+  Serial.print(fs_info.totalBytes);
+  Serial.println("byte");
+
+  Serial.print("Max open files:   ");
+  Serial.println(fs_info.maxOpenFiles);
+
+  Serial.print("Max path length:  ");
+  Serial.println(fs_info.maxPathLength);
 
   Serial.println();
-  Serial.print("Connecting to WIFI ");
-  Serial.print(SSID);
+
+  // Open dir folder
+  Dir dir = SPIFFS.openDir("/");
+  // Cycle all the content
+  while (dir.next()) {
+      // get filename
+      Serial.print(dir.fileName());
+      Serial.print(" - ");
+      // If element have a size display It else write 0
+      if(dir.fileSize()) {
+          File f = dir.openFile("r");
+          Serial.println(f.size());
+          f.close();
+      }else{
+          Serial.println("0");
+      }
+  }
+}
+
+void connect_to_wifi() {
+
+  log((String)"Connecting to WIFI " + SSID);
 
   // Initialisation
   WiFi.mode(WIFI_STA);
@@ -228,52 +376,7 @@ void connect_to_wifi() {
       i++;
   }
 
-  Serial.println(" connected");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-}
-
-void get_internet_time() {
-
-  // Define NTP Client to get time
-  WiFiUDP ntpUDP;
-  NTPClient timeClient(ntpUDP, "pool.ntp.org", 0);
-
-  // Get time
-  timeClient.begin();
-  timeClient.update();
-
-  // Get a time structure
-  time_t epochTime = timeClient.getEpochTime();
-  struct tm *ptm = gmtime((time_t *)&epochTime);
-  hours = ptm->tm_hour;
-  minutes = ptm->tm_min;
-
-  if (hours == 0 && minutes == 0)
-      ESP.restart();
-
-  // Compute DST
-  //  DST (GMT+1 durring summer time) starts on the last Sunday of March and ends on the last Sunday of October
-  // True conditions :
-  //  April to Sept
-  //  March and (mday-wday)>=25
-  //  October and (mday-wday)<25
-  if( ( (ptm->tm_mon > 2) && (ptm->tm_mon < 9) )
-   || ( (ptm->tm_mon == 2) && ((ptm->tm_mday - ptm->tm_wday) >= 25) )
-   || ( (ptm->tm_mon == 9) && ((ptm->tm_mday - ptm->tm_wday) < 25) ) )
-  {
-    hours++;
-    is_dst = true;
-  }
-  else
-    is_dst = false;
-
-  Serial.println((String)"Internet time : " + get_time());
-  Serial.println((String)"DST : " + is_dst);
-}
-
-void IRAM_ATTR TimerHandler() {
-  ISR_Timer.run();
+  log((String)"IP address: " + WiFi.localIP().toString());
 }
 
 void stop_pump() {
@@ -286,22 +389,28 @@ void start_pump() {
   digitalWrite(LED_BUILTIN, LOW);
 }
 
-void one_minute_int() {
-  if (minutes >= 59) {
-    if (hours >= 23) {
-      hours = 0;
-    } else
-      hours++;
-    minutes = 0;
-  } else
-    minutes++;
+void startOTA() {
+  ArduinoOTA.setHostname("ESP8266");
+  ArduinoOTA.setPassword("arduino-garden");
 
-  if ((hours == WATERING_HOUR) && (minutes == WATERING_MINUTE)) {        
-    if (analogRead(MOISTURE_SENSOR) > MOISTURE_THREASHOLD){
-      start_pump(); 
-      ISR_Timer.setTimeout(WATERING_DURATION_SEC * 1000, stop_pump);
-    }
-  }
+  ArduinoOTA.onStart([]() {
+    log("OTA is starting");
+  });
+  ArduinoOTA.onEnd([]() {
+    log("OTA is ending");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("OTA Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    if (error == OTA_AUTH_ERROR) log("OTA Error - Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) log("OTA Error - Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) log("OTA Error - Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) log("OTA Error - Receive Failed");
+    else if (error == OTA_END_ERROR) log("OTA Error - End Failed");
+  });
+  ArduinoOTA.begin();
+  log("OTA ready");
 }
 
 void setup() {
@@ -311,47 +420,72 @@ void setup() {
 
   digitalWrite(PUMP, LOW);  
   digitalWrite(LED_BUILTIN, HIGH);  
-  
+
   Serial.begin(115200);
+  delay(500);
+
   Serial.println();
 
+  startSPIFFS();
+
   connect_to_wifi();
-  get_internet_time();
-
-  Serial.println((String)"Watering set for " + WATERING_HOUR + (String)":" + WATERING_MINUTE);
-
-  // Interval in microsecs
-  if (ITimer.attachInterruptInterval(HW_TIMER_INTERVAL_MS * 1000, TimerHandler)) {
-    Serial.print(F("Starting ITimer OK, millis() = ")); Serial.println(millis());
-  } else {
-    Serial.println(F("Can't set ITimer. Select another freq. or timer"));
-  }
   
-  ISR_Timer.setInterval(TIMER_INTERVAL_60S, one_minute_int);
+  get_internet_time();
+  log("Internet time : " + get_formated_time());
 
+  log((String)"Watering intervals " + WATERING_INTERVALS_IN_HOURS);
+  
   setup_http_server();
+ 
+  startOTA();                  // Start the OTA service
 }
 
-// Indication that one minute has passed
-esp8266::polledTimeout::periodicMs timeToGatherData(HISTORY_STEP_IN_SEC * 1000);
+void gather_data() {
+  int moisture_sensor = analogRead(MOISTURE_SENSOR);
+  bool pump_status = digitalRead(PUMP);
+
+  log((String)"Moisture sensor : " + moisture_sensor + " - Pump : " + pump_status);
+
+  File dataLog = SPIFFS.open("/data.csv", "a"); // Write the time and the temperature to the csv file
+  dataLog.print(get_unixtimestamp());
+  dataLog.print(',');
+  dataLog.print(moisture_sensor);
+  dataLog.print(',');
+  dataLog.print(pump_status);
+  dataLog.print('\n');
+  dataLog.close();
+}
+
+void watering_check() {
+  if (analogRead(MOISTURE_SENSOR) > MOISTURE_THREASHOLD){
+    log("It's watering time");
+    start_pump(); 
+    ISR_Timer.setTimeout(WATERING_DURATION_SEC * 1000, stop_pump);
+  } else {
+    log("No need to water the plants");
+  }
+}
 
 void loop() {  
+
+  // Time to update our internet time
+  if (get_unixtimestamp() - prevNTP > intervalNTP) { // Request the time from the time server every day
+    prevNTP = get_unixtimestamp();
+    get_internet_time();
+  }
+
+  // Time to check if the plants need watering
+  if (get_unixtimestamp() > last_watering + (WATERING_INTERVALS_IN_HOURS * 60 * 60)) {
+    last_watering = get_unixtimestamp();
+    watering_check();
+  }
+
+  // Time to gather data
+  if(get_unixtimestamp() > last_data_gathering + HISTORY_STEP_IN_SEC) {
+    last_data_gathering = get_unixtimestamp();
+    gather_data();
+  }
+
   server.handleClient();
-
-  if(timeToGatherData) {
-    int moisture_sensor = analogRead(MOISTURE_SENSOR);
-    
-    history_moisture[history_index] = moisture_sensor;
-    history_pump[history_index] = digitalRead(PUMP);
-  
-    Serial.println(get_time() + (String)" - Moisture sensor : " + moisture_sensor + " - Pump : " + digitalRead(PUMP));
-  
-    if (history_index-1 >= HISTORY_DEPTH)
-      history_index = 0;
-    else
-      history_index++;
-
-    if (history_count < HISTORY_DEPTH)
-      history_count++;
-  }  
+  ArduinoOTA.handle();                        // listen for OTA events
 }
