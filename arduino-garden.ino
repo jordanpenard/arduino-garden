@@ -14,6 +14,15 @@
 
 #include "config.h"
 
+ESP8266WebServer server(80);
+static const char TEXT_PLAIN[] PROGMEM = "text/plain";
+
+void log(String data) {
+  Serial.println(get_formated_time() + " - " + data);
+  File dataLog = SPIFFS.open("/log.txt", "a");
+  dataLog.print(get_formated_time() + " - " + data + "\n");
+  dataLog.close();
+}
 
 // -----------
 // Config
@@ -30,7 +39,7 @@ const char *cfg_filename = "/config.json";
 Config config;
 
 // Loads the configuration from a file
-void loadConfiguration(Config &config) {
+void loadConfiguration() {
   // Open file for reading
   File file = SPIFFS.open(cfg_filename, "r");
 
@@ -58,7 +67,7 @@ void loadConfiguration(Config &config) {
 }
 
 // Saves the configuration to a file
-void saveConfiguration(const Config &config) {
+void saveConfiguration() {
 
   // Open file for writing
   File file = SPIFFS.open(cfg_filename, "w");
@@ -88,6 +97,32 @@ void saveConfiguration(const Config &config) {
   file.close();
 }
 
+void set_config() { 
+
+  if (server.arg("old_password") == "" 
+   || server.arg("old_password") != config.password
+   || server.arg("watering_intervals_in_hours") == ""
+   || server.arg("watering_duration_in_seconds") == ""
+   || server.arg("moisture_threashold") == ""
+   || server.arg("history_steps_in_seconds") == ""
+   || server.arg("password") == "") {
+    replyBadRequest("");
+    
+  } else {
+
+    config.watering_intervals_in_hours = server.arg("watering_intervals_in_hours").toInt();
+    config.watering_duration_in_seconds = server.arg("watering_duration_in_seconds").toInt();
+    config.moisture_threashold = server.arg("moisture_threashold").toInt();
+    config.history_steps_in_seconds = server.arg("history_steps_in_seconds").toInt();
+    server.arg("watering_intervals_in_hours").toCharArray(config.password, sizeof(config.password));
+
+    saveConfiguration();
+    
+    server.send(200, TEXT_PLAIN, "Config saved");
+  }
+}
+
+
 
 // -----------
 // WiFi
@@ -96,13 +131,31 @@ WiFiConnect wifiConnect;
 WiFiClient wifiClient;
 HTTPClient httpClient;
 
+void configModeCallback(WiFiConnect *mWiFiConnect) {
+  Serial.println("Entering Access Point");
+}
 
-// -----------
-// HTTP server
+void connect_to_wifi() {
 
-ESP8266WebServer server(80);
+  wifiConnect.setDebug(true);
+  
+  /* Set our callbacks */
+  wifiConnect.setAPCallback(configModeCallback);
 
-static const char TEXT_PLAIN[] PROGMEM = "text/plain";
+  //wifiConnect.resetSettings(); //helper to remove the stored wifi connection, comment out after first upload and re upload
+
+    /*
+       AP_NONE = Continue executing code
+       AP_LOOP = Trap in a continuous loop - Device is useless
+       AP_RESET = Restart the chip
+       AP_WAIT  = Trap in a continuous loop with captive portal until we have a working WiFi connection
+    */
+    if (!wifiConnect.autoConnect()) { // try to connect to wifi
+      /* We could also use button etc. to trigger the portal on demand within main loop */
+      wifiConnect.setAPName("Arduino-Garden");
+      wifiConnect.startConfigurationPortal(AP_WAIT);//if not connected show the configuration portal
+    }    
+}
 
 
 // -----------
@@ -134,13 +187,6 @@ String get_formated_time() {
   sprintf(formated_time, "%02d/%02d/%04d %02d:%02d", ptm->tm_mday, ptm->tm_mon+1, ptm->tm_year+1900, ptm->tm_hour, ptm->tm_min);
 
   return (String)formated_time;
-}
-
-void log(String data) {
-  Serial.println(get_formated_time() + " - " + data);
-  File dataLog = SPIFFS.open("/log.txt", "a");
-  dataLog.print(get_formated_time() + " - " + data + "\n");
-  dataLog.close();
 }
 
 void get_internet_time() {
@@ -196,6 +242,7 @@ void get_internet_time() {
 
 // -----------
 // HTTP server
+
 
 // Utils to return HTTP codes
 
@@ -253,6 +300,69 @@ void handleNotFound() {
   return replyNotFound(message);
 }
 
+String getContentType(String filename) { // convert the file extension to the MIME type
+  if (filename.endsWith(".html")) return "text/html";
+  else if (filename.endsWith(".css")) return "text/css";
+  else if (filename.endsWith(".js")) return "application/javascript";
+  else if (filename.endsWith(".ico")) return "image/x-icon";
+  return TEXT_PLAIN;
+}
+
+bool handleFileRead(String path) { // send the right file to the client (if it exists)
+  log("handleFileRead: " + path);
+  if (path.endsWith("/")) path += "index.html";         // If a folder is requested, send the index file
+  String contentType = getContentType(path);            // Get the MIME type
+  
+  if (path.equals(cfg_filename)) {
+  
+    StaticJsonDocument<JSON_CONFIG_SIZE> doc;
+
+    // Set the values in the document
+    doc["watering_intervals_in_hours"] = config.watering_intervals_in_hours;
+    doc["watering_duration_in_seconds"] = config.watering_duration_in_seconds;
+    doc["moisture_threashold"] = config.moisture_threashold;
+    doc["history_steps_in_seconds"] = config.history_steps_in_seconds;
+
+    String output;
+    
+    if (serializeJson(doc, output) == 0) {
+      log(F("Failed to serializeJson to String"));
+    }
+    
+    server.send(200, TEXT_PLAIN, output);
+      
+    return true;
+  }
+  
+  if (SPIFFS.exists(path)) {                            // If the file exists
+    File file = SPIFFS.open(path, "r");                 // Open it
+    size_t sent = server.streamFile(file, contentType); // And send it to the client
+    file.close();                                       // Then close the file again
+    return true;
+  }
+  log("\tFile Not Found");
+  return false;                                         // If the file doesn't exist, return false
+}
+
+void setup_http_server() {
+
+  server.on("/setConfig", set_config);
+  
+  // Default handler for all URIs not defined above
+  // Use it to read files from filesystem
+  server.onNotFound([]() {                              // If the client requests any URI
+    if (!handleFileRead(server.uri()))                  // send it if it exists
+      handleNotFound();                                 // otherwise, respond with a 404 (Not Found) error
+  });
+
+  // Start server
+  server.begin();
+}
+
+
+// -----------
+// Storage
+
 void downloadAndSaveFile(String fileName, String  url){
 
   log("[HTTP] begin...\n");
@@ -309,98 +419,8 @@ void downloadAndSaveFile(String fileName, String  url){
       }
       
   }
-  httpClient.end();
-
-  
+  httpClient.end();  
 }
-
-String getContentType(String filename) { // convert the file extension to the MIME type
-  if (filename.endsWith(".html")) return "text/html";
-  else if (filename.endsWith(".css")) return "text/css";
-  else if (filename.endsWith(".js")) return "application/javascript";
-  else if (filename.endsWith(".ico")) return "image/x-icon";
-  return "text/plain";
-}
-
-bool handleFileRead(String path) { // send the right file to the client (if it exists)
-  log("handleFileRead: " + path);
-  if (path.endsWith("/")) path += "index.html";         // If a folder is requested, send the index file
-  String contentType = getContentType(path);            // Get the MIME type
-  
-  if (path.equals(cfg_filename)) {
-  
-    StaticJsonDocument<JSON_CONFIG_SIZE> doc;
-
-    // Set the values in the document
-    doc["watering_intervals_in_hours"] = config.watering_intervals_in_hours;
-    doc["watering_duration_in_seconds"] = config.watering_duration_in_seconds;
-    doc["moisture_threashold"] = config.moisture_threashold;
-    doc["history_steps_in_seconds"] = config.history_steps_in_seconds;
-
-    String output;
-    
-    if (serializeJson(doc, output) == 0) {
-      log(F("Failed to serializeJson to String"));
-    }
-    
-    server.send(200, "text/plain", output);
-      
-    return true;
-  }
-  
-  if (SPIFFS.exists(path)) {                            // If the file exists
-    File file = SPIFFS.open(path, "r");                 // Open it
-    size_t sent = server.streamFile(file, contentType); // And send it to the client
-    file.close();                                       // Then close the file again
-    return true;
-  }
-  log("\tFile Not Found");
-  return false;                                         // If the file doesn't exist, return false
-}
-
-void set_config() { 
-
-  if (server.arg("old_password") == "" 
-   || server.arg("old_password") != config.password
-   || server.arg("watering_intervals_in_hours") == ""
-   || server.arg("watering_duration_in_seconds") == ""
-   || server.arg("moisture_threashold") == ""
-   || server.arg("history_steps_in_seconds") == ""
-   || server.arg("password") == "") {
-    replyBadRequest("");
-    
-  } else {
-
-    config.watering_intervals_in_hours = server.arg("watering_intervals_in_hours").toInt();
-    config.watering_duration_in_seconds = server.arg("watering_duration_in_seconds").toInt();
-    config.moisture_threashold = server.arg("moisture_threashold").toInt();
-    config.history_steps_in_seconds = server.arg("history_steps_in_seconds").toInt();
-    server.arg("watering_intervals_in_hours").toCharArray(config.password, sizeof(config.password));
-
-    saveConfiguration(config);
-    
-    server.send(200, "text/plain", "Config saved");
-  }
-}
-
-void setup_http_server() {
-
-  server.on("/setConfig", set_config);
-  
-  // Default handler for all URIs not defined above
-  // Use it to read files from filesystem
-  server.onNotFound([]() {                              // If the client requests any URI
-    if (!handleFileRead(server.uri()))                  // send it if it exists
-      handleNotFound();                                 // otherwise, respond with a 404 (Not Found) error
-  });
-
-  // Start server
-  server.begin();
-}
-
-
-// -----------
-// 
 
 void startSPIFFS() { // Start the SPIFFS and list all contents
  
@@ -462,31 +482,9 @@ void startSPIFFS() { // Start the SPIFFS and list all contents
   }
 }
 
-void configModeCallback(WiFiConnect *mWiFiConnect) {
-  Serial.println("Entering Access Point");
-}
 
-void connect_to_wifi() {
-
-  wifiConnect.setDebug(true);
-  
-  /* Set our callbacks */
-  wifiConnect.setAPCallback(configModeCallback);
-
-  //wifiConnect.resetSettings(); //helper to remove the stored wifi connection, comment out after first upload and re upload
-
-    /*
-       AP_NONE = Continue executing code
-       AP_LOOP = Trap in a continuous loop - Device is useless
-       AP_RESET = Restart the chip
-       AP_WAIT  = Trap in a continuous loop with captive portal until we have a working WiFi connection
-    */
-    if (!wifiConnect.autoConnect()) { // try to connect to wifi
-      /* We could also use button etc. to trigger the portal on demand within main loop */
-      wifiConnect.setAPName("Arduino-Garden");
-      wifiConnect.startConfigurationPortal(AP_WAIT);//if not connected show the configuration portal
-    }    
-}
+// -----------
+// 
 
 void stop_pump() {
   digitalWrite(PUMP, LOW);
@@ -545,7 +543,7 @@ void setup() {
  
   startOTA();                  // Start the OTA service
 
-  loadConfiguration(config);
+  loadConfiguration();
 
   // Downloading the latest web pages from github on the branch web-live
   downloadAndSaveFile("/index.html","https://raw.githubusercontent.com/jordanpenard/arduino-garden/web-live/data/index.html");
