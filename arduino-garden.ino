@@ -4,12 +4,97 @@
 
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
+#include <WiFiConnect.h>
 #include <ESP8266WebServer.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <FS.h>
+#include <ESP8266HTTPClient.h>
+#include <ArduinoJson.h>
 
 #include "config.h"
+
+
+// -----------
+// Config
+
+struct Config {
+  uint32_t watering_intervals_in_hours;
+  uint32_t watering_duration_in_seconds;
+  uint32_t moisture_threashold;
+  uint32_t history_steps_in_seconds;
+  char password[64];
+};
+
+const char *cfg_filename = "/config.json";
+Config config;
+
+// Loads the configuration from a file
+void loadConfiguration(Config &config) {
+  // Open file for reading
+  File file = SPIFFS.open(cfg_filename, "r");
+
+  // Allocate a temporary JsonDocument
+  // Don't forget to change the capacity to match your requirements.
+  // Use arduinojson.org/v6/assistant to compute the capacity.
+  StaticJsonDocument<JSON_CONFIG_SIZE> doc;
+
+  // Deserialize the JSON document
+  DeserializationError error = deserializeJson(doc, file);
+  if (error)
+    log(F("Failed to read file, using default configuration"));
+
+  // Copy values from the JsonDocument to the Config
+  config.watering_intervals_in_hours = doc["watering_intervals_in_hours"] | WATERING_INTERVALS_IN_HOURS;
+  config.watering_duration_in_seconds = doc["watering_duration_in_seconds"] | WATERING_DURATION_SEC;
+  config.moisture_threashold = doc["moisture_threashold"] | MOISTURE_THREASHOLD;
+  config.history_steps_in_seconds = doc["history_steps_in_seconds"] | HISTORY_STEP_IN_SEC;
+  strlcpy(config.password, 
+          doc["password"] | DEFAULT_PASSWORD,
+          sizeof(config.password));
+  
+  // Close the file (Curiously, File's destructor doesn't close the file)
+  file.close();
+}
+
+// Saves the configuration to a file
+void saveConfiguration(const Config &config) {
+
+  // Open file for writing
+  File file = SPIFFS.open(cfg_filename, "w");
+  if (!file) {
+    log(F("Failed to create config file"));
+    return;
+  }
+
+  // Allocate a temporary JsonDocument
+  // Don't forget to change the capacity to match your requirements.
+  // Use arduinojson.org/assistant to compute the capacity.
+  StaticJsonDocument<JSON_CONFIG_SIZE> doc;
+
+  // Set the values in the document
+  doc["watering_intervals_in_hours"] = config.watering_intervals_in_hours;
+  doc["watering_duration_in_seconds"] = config.watering_duration_in_seconds;
+  doc["moisture_threashold"] = config.moisture_threashold;
+  doc["history_steps_in_seconds"] = config.history_steps_in_seconds;
+  doc["password"] = config.password;
+
+  // Serialize JSON to file
+  if (serializeJson(doc, file) == 0) {
+    log(F("Failed to write to file"));
+  }
+
+  // Close the file
+  file.close();
+}
+
+
+// -----------
+// WiFi
+
+WiFiConnect wifiConnect;
+WiFiClient wifiClient;
+HTTPClient httpClient;
 
 
 // -----------
@@ -168,6 +253,67 @@ void handleNotFound() {
   return replyNotFound(message);
 }
 
+void downloadAndSaveFile(String fileName, String  url){
+
+  log("[HTTP] begin...\n");
+  log(fileName);
+  log(url);
+  httpClient.begin(wifiClient, url);
+  
+  log("[HTTP] GET...");
+  log(url.c_str());
+  // start connection and send HTTP header
+  int httpCode = httpClient.GET();
+  if(httpCode > 0) {
+      // HTTP header has been send and Server response header has been handled
+      log("[HTTP] GET... code:");
+      log(httpCode);
+      log("[FILE] open file for writing");
+      log(fileName.c_str());
+      
+      File file = SPIFFS.open(fileName, "w");
+
+      // file found at server
+      if(httpCode == HTTP_CODE_OK) {
+
+          // get lenght of document (is -1 when Server sends no Content-Length header)
+          int len = httpClient.getSize();
+
+          // create buffer for read
+          uint8_t buff[128] = { 0 };
+
+          // get tcp stream
+          WiFiClient * stream = httpClient.getStreamPtr();
+
+          // read all data from server
+          while(httpClient.connected() && (len > 0 || len == -1)) {
+              // get available data size
+              size_t size = stream->available();
+              if(size) {
+                  // read up to 128 byte
+                  int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
+                  // write it to Serial
+                  //Serial.write(buff, c);
+                  file.write(buff, c);
+                  if(len > 0) {
+                      len -= c;
+                  }
+              }
+              delay(1);
+          }
+
+          log("[HTTP] connection closed or file end.");
+          log("[FILE] closing file");
+          file.close();
+          
+      }
+      
+  }
+  httpClient.end();
+
+  
+}
+
 String getContentType(String filename) { // convert the file extension to the MIME type
   if (filename.endsWith(".html")) return "text/html";
   else if (filename.endsWith(".css")) return "text/css";
@@ -180,6 +326,28 @@ bool handleFileRead(String path) { // send the right file to the client (if it e
   log("handleFileRead: " + path);
   if (path.endsWith("/")) path += "index.html";         // If a folder is requested, send the index file
   String contentType = getContentType(path);            // Get the MIME type
+  
+  if (path.equals(cfg_filename)) {
+  
+    StaticJsonDocument<JSON_CONFIG_SIZE> doc;
+
+    // Set the values in the document
+    doc["watering_intervals_in_hours"] = config.watering_intervals_in_hours;
+    doc["watering_duration_in_seconds"] = config.watering_duration_in_seconds;
+    doc["moisture_threashold"] = config.moisture_threashold;
+    doc["history_steps_in_seconds"] = config.history_steps_in_seconds;
+
+    String output;
+    
+    if (serializeJson(doc, output) == 0) {
+      log(F("Failed to serializeJson to String"));
+    }
+    
+    server.send(200, "text/plain", output);
+      
+    return true;
+  }
+  
   if (SPIFFS.exists(path)) {                            // If the file exists
     File file = SPIFFS.open(path, "r");                 // Open it
     size_t sent = server.streamFile(file, contentType); // And send it to the client
@@ -190,8 +358,35 @@ bool handleFileRead(String path) { // send the right file to the client (if it e
   return false;                                         // If the file doesn't exist, return false
 }
 
+void set_config() { 
+
+  if (server.arg("old_password") == "" 
+   || server.arg("old_password") != config.password
+   || server.arg("watering_intervals_in_hours") == ""
+   || server.arg("watering_duration_in_seconds") == ""
+   || server.arg("moisture_threashold") == ""
+   || server.arg("history_steps_in_seconds") == ""
+   || server.arg("password") == "") {
+    replyBadRequest("");
+    
+  } else {
+
+    config.watering_intervals_in_hours = server.arg("watering_intervals_in_hours").toInt();
+    config.watering_duration_in_seconds = server.arg("watering_duration_in_seconds").toInt();
+    config.moisture_threashold = server.arg("moisture_threashold").toInt();
+    config.history_steps_in_seconds = server.arg("history_steps_in_seconds").toInt();
+    server.arg("watering_intervals_in_hours").toCharArray(config.password, sizeof(config.password));
+
+    saveConfiguration(config);
+    
+    server.send(200, "text/plain", "Config saved");
+  }
+}
+
 void setup_http_server() {
 
+  server.on("/setConfig", set_config);
+  
   // Default handler for all URIs not defined above
   // Use it to read files from filesystem
   server.onNotFound([]() {                              // If the client requests any URI
@@ -267,31 +462,30 @@ void startSPIFFS() { // Start the SPIFFS and list all contents
   }
 }
 
+void configModeCallback(WiFiConnect *mWiFiConnect) {
+  Serial.println("Entering Access Point");
+}
+
 void connect_to_wifi() {
 
-  log((String)"Connecting to WIFI " + SSID);
+  wifiConnect.setDebug(true);
+  
+  /* Set our callbacks */
+  wifiConnect.setAPCallback(configModeCallback);
 
-  // Initialisation
-  WiFi.mode(WIFI_STA);
+  //wifiConnect.resetSettings(); //helper to remove the stored wifi connection, comment out after first upload and re upload
 
-  // Connecting to a WiFi network
-  WiFi.begin(SSID, PASSWORD);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    static int i = 0;
-
-    delay(500);
-    Serial.print(".");
-
-    // If the connection takes too long, reset the board
-    if (i > 20)
-      ESP.restart();
-    else
-      i++;
-  }
-  Serial.println("");
-
-  log((String)"IP address: " + WiFi.localIP().toString());
+    /*
+       AP_NONE = Continue executing code
+       AP_LOOP = Trap in a continuous loop - Device is useless
+       AP_RESET = Restart the chip
+       AP_WAIT  = Trap in a continuous loop with captive portal until we have a working WiFi connection
+    */
+    if (!wifiConnect.autoConnect()) { // try to connect to wifi
+      /* We could also use button etc. to trigger the portal on demand within main loop */
+      wifiConnect.setAPName("Arduino-Garden");
+      wifiConnect.startConfigurationPortal(AP_WAIT);//if not connected show the configuration portal
+    }    
 }
 
 void stop_pump() {
@@ -351,12 +545,20 @@ void setup() {
  
   startOTA();                  // Start the OTA service
 
+  loadConfiguration(config);
+
+  // Downloading the latest web pages from github on the branch web-live
+  downloadAndSaveFile("/index.html","https://raw.githubusercontent.com/jordanpenard/arduino-garden/web-live/data/index.html");
+  downloadAndSaveFile("/graph.js","https://raw.githubusercontent.com/jordanpenard/arduino-garden/web-live/data/graph.js");
+
   log("------------");
   log("Setup is done\n");
   log("Internet time : " + get_formated_time());
-  log((String)"Watering intervals in hours : " + WATERING_INTERVALS_IN_HOURS);
-  log((String)"Watering duration in seconds : " + WATERING_DURATION_SEC);
-  log((String)"Moisture threashold : " + MOISTURE_THREASHOLD);
+  log((String)"Watering intervals in hours : " + config.watering_intervals_in_hours);
+  log((String)"Watering duration in seconds : " + config.watering_duration_in_seconds);
+  log((String)"Moisture threashold : " + config.moisture_threashold);
+  log((String)"History steps in seconds : " + config.history_steps_in_seconds);
+
 }
 
 void gather_data() {
@@ -376,10 +578,10 @@ void gather_data() {
 }
 
 void watering_check() {
-  if (analogRead(MOISTURE_SENSOR) > MOISTURE_THREASHOLD){
+  if (analogRead(MOISTURE_SENSOR) > config.moisture_threashold){
     log("It's watering time");
     start_pump();
-    stop_watering = get_unixtimestamp() + WATERING_DURATION_SEC;
+    stop_watering = get_unixtimestamp() + config.watering_duration_in_seconds;
   } else {
     log("No need to water the plants");
   }
@@ -399,13 +601,13 @@ void loop() {
   }
 
   // Time to check if the plants need watering
-  if (get_unixtimestamp() > last_watering + (WATERING_INTERVALS_IN_HOURS * 60 * 60)) {
+  if (get_unixtimestamp() > last_watering + (config.watering_intervals_in_hours * 60 * 60)) {
     last_watering = get_unixtimestamp();
     watering_check();
   }
 
   // Time to gather data
-  if(get_unixtimestamp() > last_data_gathering + HISTORY_STEP_IN_SEC) {
+  if(get_unixtimestamp() > last_data_gathering + config.history_steps_in_seconds) {
     last_data_gathering = get_unixtimestamp();
     gather_data();
   }

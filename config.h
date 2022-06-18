@@ -1,8 +1,4 @@
 
-// WIFI
-#define SSID "<WIFI SSID>"
-#define PASSWORD "<WIFI PASSWORD>"
-
 // IOs
 #define PUMP            5 // D1
 #define MOISTURE_SENSOR A0
@@ -14,3 +10,6 @@
 
 // Data collection
 #define HISTORY_STEP_IN_SEC 60
+
+#define JSON_CONFIG_SIZE 512
+#define DEFAULT_PASSWORD "1234"

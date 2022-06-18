@@ -1,11 +1,13 @@
 <html>
     <head>
-        <script type="text/JavaScript" src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <script type="text/JavaScript" src="https://code.jquery.com/jquery-3.6.0.min.js" ></script>
-        <script type="text/JavaScript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery-csv/0.8.9/jquery.csv.js"></script>
+        <script type="text/JavaScript" src="https://cdn.jsdelivr.net/npm/chart.js@3.8.0/dist/chart.js"></script>
+        <script type="text/JavaScript" src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.js"></script>
+        <script type="text/JavaScript" src="https://cdn.jsdelivr.net/npm/jquery-csv@1.0.21/src/jquery.csv.js"></script>
+        <script type="text/JavaScript" src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@2.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
         <script type="text/JavaScript" src="graph.js"></script>
     </head>
     <body onload="drawGraph()">
-        <div><canvas id="myChart" width="1685" height="842" style="display: block; box-sizing: border-box; height: 842px; width: 1685px;"></canvas></div>
+        <div w3-include-html="header.html"></div>
+        <div><canvas id="myChart" width="1685" height="842" style="display: block; box-sizing: border-box; height: 700px; width: 1300px;"></canvas></div>
     </body>
 </html>
