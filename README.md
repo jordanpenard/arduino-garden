@@ -7,10 +7,15 @@ Storage of the data, log and web pages is currently in the flash of the esp8266.
 
 WiFi setup is handled through a hotspot on first boot or if the currently setup wifi can't be connected to. 
 
+## Dependencies
+
+Boards :
+- ESP8266 : https://arduino.esp8266.com/stable/package_esp8266com_index.json
+
+Libraries :
+- 
+
 ## TODO
-- Data query should allow for either a number of points or data after a given timestamp
 - Add a menu to the webpages
-- Think about storage full
 - Graph should have the option to see data for the last day, week, month, year, all
-- File storage initialisation
 - Add support for extra sensors (air temperature, air humidity, air pressure, ...)

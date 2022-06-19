@@ -123,7 +123,6 @@ void set_config() {
 }
 
 
-
 // -----------
 // WiFi
 
@@ -363,12 +362,15 @@ void setup_http_server() {
 // -----------
 // Storage
 
-void downloadAndSaveFile(String fileName, String  url){
+void downloadAndSaveFile(String fileName, String url){
+
+  WiFiClientSecure newSecure;
+  newSecure.setInsecure();
 
   log("[HTTP] begin...\n");
   log(fileName);
   log(url);
-  httpClient.begin(wifiClient, url);
+  httpClient.begin(newSecure, url);
   
   log("[HTTP] GET...");
   log(url.c_str());
@@ -419,7 +421,8 @@ void downloadAndSaveFile(String fileName, String  url){
       }
       
   }
-  httpClient.end();  
+  httpClient.end();
+  newSecure.stop();
 }
 
 void startSPIFFS() { // Start the SPIFFS and list all contents
@@ -586,6 +589,14 @@ void watering_check() {
 }
 
 void loop() {  
+
+  // Checking if the flash is full
+  FSInfo fs_info;
+  if (fs_info.usedBytes >= fs_info.totalBytes) {
+    SPIFFS.format();
+    log("Flash storage was full and got wiped clean");
+    ESP.reset();
+  }
 
   // Time to update our internet time
   if (get_unixtimestamp() - prevNTP > intervalNTP) { // Request the time from the time server every day
