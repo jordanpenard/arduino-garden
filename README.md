@@ -16,6 +16,5 @@ Libraries :
 - 
 
 ## TODO
-- Add a menu to the webpages
-- Graph should have the option to see data for the last day, week, month, year, all
+- Add a button to the config page to reboot the device
 - Add support for extra sensors (air temperature, air humidity, air pressure, ...)

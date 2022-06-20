@@ -28,9 +28,9 @@ function drawGraph() {
             x: date_data,
             y: pump_data,
             yaxis: 'y2',
-            fill: 'toself',
+            fill: 'tozeroy',
             fillcolor: 'rgba(255, 99, 132, 0.2)',
-            line: {color: 'rgb(255, 99, 132)'}
+            line: {color: 'rgb(255, 99, 132)', shape: 'hv'}
         };
         
         const data = [moisture_trace, pump_trace];
@@ -91,11 +91,68 @@ function drawGraph() {
 
 function loadConfig() {
     $.get("config.json", function( config_json ) {
-        var config = JSON.parse(config_json)
-        for (var key in config) {   
-            $('[name="'+key+'"]').val(config[key]);
+        for (var key in config_json) {   
+            $('#'+key).val(config_json[key]);
         }
     });
+}
+
+function saveConfig() {
+  request = "setConfig?";
+
+  for (var key of ["watering_intervals_in_hours", "watering_duration_in_seconds", "moisture_threashold", "history_steps_in_seconds", "password"]) {
+    request += key + "=" + $('#configPannel #'+key).val() + "&";
+  }
+
+  $.ajax({
+    url: request,
+    type: 'GET',
+    success: function(data){ 
+      $('#configPannel').trigger('click');
+    },
+    error: function(xhr, textStatus, errorThrown) {
+      alert('Error: ' + xhr.responseText);
+    }
+  });
+}
+
+function changePassword() {
+  request = "setConfig?";
+  
+  if ($('#new_password').val() != $('#new_password_repeat').val()) {
+    alert("New passwords don't match");
+  } else {
+
+    for (var key of ["password", "new_password"]) {
+      request += key + "=" + $('#changePasswordPannel #'+key).val() + "&";
+    }
+
+    $.ajax({
+      url: request,
+      type: 'GET',
+      success: function(data){ 
+        $('#changePasswordPannel').trigger('click');
+      },
+      error: function(xhr, textStatus, errorThrown) {
+        alert('Error: ' + xhr.responseText);
+      }
+    });
+  }
+}
+
+function manualWatering() {
+  request = "manualWatering?password=" + $('#manualWateringdPannel #password').val() ;
+
+  $.ajax({
+    url: request,
+    type: 'GET',
+    success: function(data){ 
+      $('#manualWateringdPannel').trigger('click');
+    },
+    error: function(xhr, textStatus, errorThrown) {
+      alert('Error: ' + xhr.responseText);
+    }
+  });
 }
 
 $(document).ready(function() {

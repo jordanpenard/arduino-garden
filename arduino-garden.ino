@@ -15,7 +15,6 @@
 #include "config.h"
 
 ESP8266WebServer server(80);
-static const char TEXT_PLAIN[] PROGMEM = "text/plain";
 
 void log(String data) {
   Serial.println(get_formated_time() + " - " + data);
@@ -99,26 +98,25 @@ void saveConfiguration() {
 
 void set_config() { 
 
-  if (server.arg("old_password") == "" 
-   || server.arg("old_password") != config.password
-   || server.arg("watering_intervals_in_hours") == ""
-   || server.arg("watering_duration_in_seconds") == ""
-   || server.arg("moisture_threashold") == ""
-   || server.arg("history_steps_in_seconds") == ""
-   || server.arg("password") == "") {
-    replyBadRequest("");
+  if (server.arg("password") != config.password) {
+    replyServerError("Wrong password");
     
   } else {
 
-    config.watering_intervals_in_hours = server.arg("watering_intervals_in_hours").toInt();
-    config.watering_duration_in_seconds = server.arg("watering_duration_in_seconds").toInt();
-    config.moisture_threashold = server.arg("moisture_threashold").toInt();
-    config.history_steps_in_seconds = server.arg("history_steps_in_seconds").toInt();
-    server.arg("watering_intervals_in_hours").toCharArray(config.password, sizeof(config.password));
+    if (server.arg("watering_intervals_in_hours") != "")
+      config.watering_intervals_in_hours = server.arg("watering_intervals_in_hours").toInt();
+    if (server.arg("watering_duration_in_seconds") != "")
+      config.watering_duration_in_seconds = server.arg("watering_duration_in_seconds").toInt();
+    if (server.arg("moisture_threashold") != "")
+      config.moisture_threashold = server.arg("moisture_threashold").toInt();
+    if (server.arg("history_steps_in_seconds") != "")
+      config.history_steps_in_seconds = server.arg("history_steps_in_seconds").toInt();
+    if (server.arg("new_password") != "")
+      server.arg("new_password").toCharArray(config.password, sizeof(config.password));
 
     saveConfiguration();
     
-    server.send(200, TEXT_PLAIN, "Config saved");
+    server.send(200, "text/plain", "Config saved");
   }
 }
 
@@ -246,25 +244,25 @@ void get_internet_time() {
 // Utils to return HTTP codes
 
 void replyOK() {
-  server.send(200, FPSTR(TEXT_PLAIN), "");
+  server.send(200, FPSTR("text/plain"), "");
 }
 
 void replyOKWithMsg(String msg) {
-  server.send(200, FPSTR(TEXT_PLAIN), msg);
+  server.send(200, FPSTR("text/plain"), msg);
 }
 
 void replyNotFound(String msg) {
-  server.send(404, FPSTR(TEXT_PLAIN), msg);
+  server.send(404, FPSTR("text/plain"), msg);
 }
 
 void replyBadRequest(String msg) {
   log(msg);
-  server.send(400, FPSTR(TEXT_PLAIN), msg + "\r\n");
+  server.send(400, FPSTR("text/plain"), msg + "\r\n");
 }
 
 void replyServerError(String msg) {
   log(msg);
-  server.send(500, FPSTR(TEXT_PLAIN), msg + "\r\n");
+  server.send(500, FPSTR("text/plain"), msg + "\r\n");
 }
 
 /*
@@ -303,8 +301,9 @@ String getContentType(String filename) { // convert the file extension to the MI
   if (filename.endsWith(".html")) return "text/html";
   else if (filename.endsWith(".css")) return "text/css";
   else if (filename.endsWith(".js")) return "application/javascript";
+  else if (filename.endsWith(".json")) return "application/json";
   else if (filename.endsWith(".ico")) return "image/x-icon";
-  return TEXT_PLAIN;
+  return "text/plain";
 }
 
 bool handleFileRead(String path) { // send the right file to the client (if it exists)
@@ -328,7 +327,7 @@ bool handleFileRead(String path) { // send the right file to the client (if it e
       log(F("Failed to serializeJson to String"));
     }
     
-    server.send(200, TEXT_PLAIN, output);
+    server.send(200, "application/json", output);
       
     return true;
   }
@@ -343,9 +342,21 @@ bool handleFileRead(String path) { // send the right file to the client (if it e
   return false;                                         // If the file doesn't exist, return false
 }
 
+void manual_watering() {
+
+  if (server.arg("password") != config.password) {
+    replyServerError("Wrong password");
+    
+  } else {
+    watering_check();
+    server.send(200, "text/plain", "Done");
+  }
+}
+
 void setup_http_server() {
 
   server.on("/setConfig", set_config);
+  server.on("/manualWatering", manual_watering);
   
   // Default handler for all URIs not defined above
   // Use it to read files from filesystem
@@ -547,6 +558,7 @@ void setup() {
   startOTA();                  // Start the OTA service
 
   loadConfiguration();
+  saveConfiguration();
 
   // Downloading the latest web pages from github on the branch web-live
   downloadAndSaveFile("/index.html","https://raw.githubusercontent.com/jordanpenard/arduino-garden/web-live/data/index.html");
@@ -559,7 +571,7 @@ void setup() {
   log((String)"Watering duration in seconds : " + config.watering_duration_in_seconds);
   log((String)"Moisture threashold : " + config.moisture_threashold);
   log((String)"History steps in seconds : " + config.history_steps_in_seconds);
-
+  Serial.println((String)"Password : " + config.password);
 }
 
 void gather_data() {
@@ -579,6 +591,7 @@ void gather_data() {
 }
 
 void watering_check() {
+  last_watering = get_unixtimestamp();
   if (analogRead(MOISTURE_SENSOR) > config.moisture_threashold){
     log("It's watering time");
     start_pump();
@@ -592,7 +605,9 @@ void loop() {
 
   // Checking if the flash is full
   FSInfo fs_info;
+  SPIFFS.info(fs_info);
   if (fs_info.usedBytes >= fs_info.totalBytes) {
+    startSPIFFS();
     SPIFFS.format();
     log("Flash storage was full and got wiped clean");
     ESP.reset();
@@ -611,7 +626,6 @@ void loop() {
 
   // Time to check if the plants need watering
   if (get_unixtimestamp() > last_watering + (config.watering_intervals_in_hours * 60 * 60)) {
-    last_watering = get_unixtimestamp();
     watering_check();
   }
 
