@@ -3,60 +3,102 @@ function drawGraph() {
     $.get("data.csv", function( csv_data ) {
         var data_array = $.csv.toArrays(csv_data);
         
-        moisture_data = [];        
-        pump_data = [];        
+        date_data = [];
+        moisture_data = [];
+        pump_data = [];
         for (const line of data_array) {
-            moisture_data.push({x: line[0]*1000, y: line[1]})
-            pump_data.push({x: line[0]*1000, y: line[2]})
+            date_data.push(line[0]*1000);
+            moisture_data.push(line[1]);
+            pump_data.push(line[2]);
         }
 
-        const data = {datasets: [{
-            type: 'line',
-            label: 'Soil moisture',
-            data: moisture_data,
-            yAxisID: 'Moisture',
-            fill: false,
-            borderColor: 'rgb(54, 162, 235)',
-            backgroundColor: 'rgb(54, 162, 235)',
-            tension: 0.1
-        }, {
-            type: 'line',
-            label: 'Pump',
-            data: pump_data,
-            yAxisID: 'Pump',
-            fill: true,
-            borderColor: 'rgb(255, 99, 132)',
-            backgroundColor: 'rgba(255, 99, 132, 0.2)',
-            tension: 0.1
-        }]};
-                            
-        const options = {
-            scales: {
-                Moisture: {
-                    type: 'linear',
-                    position: 'left'
-                },
-                Pump: {
-                    type: 'linear',
-                    position: 'right',
-                    max: 1,
-                    min: 0
-                },
-                x: {
-                    type: 'time',
-                    parsing: false,
-                    time: {
-                        unit: 'day'
-                    }
-                }
+        const moisture_trace = {
+            type: "scatter",
+            mode: "lines",
+            name: 'Soil moisture',
+            x: date_data,
+            y: moisture_data,
+            line: {color: 'rgb(54, 162, 235)'}
+        };
+          
+        const pump_trace = {
+            type: "scatter",
+            mode: "lines",
+            name: 'Pump',
+            x: date_data,
+            y: pump_data,
+            yaxis: 'y2',
+            fill: 'toself',
+            fillcolor: 'rgba(255, 99, 132, 0.2)',
+            line: {color: 'rgb(255, 99, 132)'}
+        };
+        
+        const data = [moisture_trace, pump_trace];
+
+        var OneDaysAgo = new Date(new Date().setDate(new Date().getDate() - 1));
+
+        const layout = {
+            title: 'Arduino Garden data logging',
+            xaxis: {
+              autorange: true,
+              rangeselector: {buttons: [
+                  {
+                    count: 1,
+                    label: 'day',
+                    step: 'day',
+                    stepmode: 'backward',
+                    default: true
+                  },
+                  {
+                    count: 7,
+                    label: 'week',
+                    step: 'day',
+                    stepmode: 'backward'
+                  },
+                  {
+                    count: 1,
+                    label: 'month',
+                    step: 'month',
+                    stepmode: 'backward'
+                  },
+                  {
+                    count: 1,
+                    label: 'year',
+                    step: 'year',
+                    stepmode: 'backward'
+                  },
+                  {step: 'all'}
+                ]},
+              rangeslider: {autorange: true},
+              type: 'date'
+            },
+            yaxis: {
+              autorange: true,
+              type: 'linear'
+            },
+            yaxis2: {
+              autorange: false,
+              range: [0, 1],
+              side: 'right',
+              overlaying: 'y',
+              type: 'linear'
             }
         };
-            
-        const config = {
-            data: data,
-            options: options
-        };
-
-        const myChart = new Chart(document.getElementById('myChart'), config);
+          
+        Plotly.newPlot('myChart', data, layout);
     });
 }
+
+function loadConfig() {
+    $.get("config.json", function( config_json ) {
+        var config = JSON.parse(config_json)
+        for (var key in config) {   
+            $('[name="'+key+'"]').val(config[key]);
+        }
+    });
+}
+
+$(document).ready(function() {
+    drawGraph();
+    loadConfig();
+});

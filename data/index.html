@@ -1,13 +1,60 @@
 <html>
     <head>
-        <script type="text/JavaScript" src="https://cdn.jsdelivr.net/npm/chart.js@3.8.0/dist/chart.js"></script>
         <script type="text/JavaScript" src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.js"></script>
         <script type="text/JavaScript" src="https://cdn.jsdelivr.net/npm/jquery-csv@1.0.21/src/jquery.csv.js"></script>
-        <script type="text/JavaScript" src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@2.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+        <script type="text/JavaScript" src="https://cdn.jsdelivr.net/npm/plotly.js@2.12.1/dist/plotly.min.js"></script>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-0evHe/X+R7YkIZDRvuzKMRqM+OrBnVFBL6DOitfPri4tjfHxaWutUpFmBp4vmVor" crossorigin="anonymous">
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/js/bootstrap.bundle.min.js" integrity="sha384-pprn3073KE6tl6bjs2QrFaJGz5/SUsLqktiwsUTF55Jfv3qYSDhgCecCxMW52nD2" crossorigin="anonymous"></script>
         <script type="text/JavaScript" src="graph.js"></script>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">    
     </head>
-    <body onload="drawGraph()">
-        <div w3-include-html="header.html"></div>
-        <div><canvas id="myChart" width="1685" height="842" style="display: block; box-sizing: border-box; height: 700px; width: 1300px;"></canvas></div>
+    <body>
+        <div class="container">
+
+          <ul class="nav nav-pills" id="myTab" role="tablist" style="margin-top: 20;">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="home-tab" data-bs-toggle="tab" data-bs-target="#home-tab-pane" type="button" role="tab" aria-controls="home-tab-pane" aria-selected="true">Home</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="config-tab" data-bs-toggle="tab" data-bs-target="#config-tab-pane" type="button" role="tab" aria-controls="config-tab-pane" aria-selected="false">Config</button>
+            </li>
+          </ul>
+          
+          <div class="tab-content" id="myTabContent">
+            
+            <!-- Home pannel -->
+            <div class="tab-pane fade show active" id="home-tab-pane" role="tabpanel" aria-labelledby="home-tab" tabindex="0">
+                <div id="myChart" style="width:1200px;height:600px;"></div>
+            </div>
+
+            <!-- Config pannel -->
+            <div class="tab-pane fade" id="config-tab-pane" role="tabpanel" aria-labelledby="config-tab" tabindex="0">
+                <form action="/setConfig" style="margin: 20 0;">
+                    <div class="col-3">
+                        <label for="watering_intervals_in_hours" class="form-label">watering_intervals_in_hours</label><br>
+                        <input class="form-control" type="text" id="watering_intervals_in_hours" name="watering_intervals_in_hours" value=""><br>
+            
+                        <label for="watering_duration_in_seconds" class="form-label">watering_duration_in_seconds</label><br>
+                        <input class="form-control" type="text" id="watering_duration_in_seconds" name="watering_duration_in_seconds" value=""><br>
+            
+                        <label for="moisture_threashold" class="form-label">moisture_threashold</label><br>
+                        <input class="form-control" type="text" id="moisture_threashold" name="moisture_threashold" value=""><br>
+            
+                        <label for="history_steps_in_seconds" class="form-label">history_steps_in_seconds</label><br>
+                        <input class="form-control" type="text" id="history_steps_in_seconds" name="history_steps_in_seconds" value=""><br>
+            
+                        <label for="old_password" class="form-label">old_password</label><br>
+                        <input class="form-control" type="text" id="old_password" name="old_password" value=""><br>
+            
+                        <label for="password" class="form-label">password</label><br>
+                        <input class="form-control" type="text" id="password" name="password" value=""><br>
+            
+                        <button type="submit" class="btn btn-primary">Submit</button>
+                    </div>
+                </form>        
+            </div>
+          </div>
+        </div>
     </body>
 </html>
