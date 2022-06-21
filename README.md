@@ -16,5 +16,4 @@ Libraries :
 - 
 
 ## TODO
-- Add a button to the config page to reboot the device
 - Add support for extra sensors (air temperature, air humidity, air pressure, ...)

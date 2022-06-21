@@ -19,6 +19,7 @@
           <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#configPannel">Config</button>
           <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#changePasswordPannel">Change password</button>
           <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#manualWateringdPannel">Manual watering</button>
+          <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#rebootPannel">Reboot</button>
           <br>
 
           <div class="tab-pane fade show active" id="home-tab-pane" role="tabpanel" aria-labelledby="home-tab" tabindex="0">
@@ -127,6 +128,30 @@
             </div>
           </div>
           
+          <!-- Reboot pannel -->
+          <div class="modal fade" id="rebootPannel" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title">Reboot</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <form style="margin: 20 0;">
+                    <div class="form-floating mb-3">
+                      <input class="form-control" type="text" id="password" name="password" placeholder="Password">
+                      <label for="password">Password</label>
+                    </div>
+                  </form>        
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                  <button type="button" class="btn btn-primary" onclick="reboot();">Go</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        
         </div>
 
         <footer class="footer bg-light">

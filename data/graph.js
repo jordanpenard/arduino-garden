@@ -155,6 +155,21 @@ function manualWatering() {
   });
 }
 
+function reboot() {
+  request = "reboot?password=" + $('#rebootPannel #password').val() ;
+
+  $.ajax({
+    url: request,
+    type: 'GET',
+    success: function(data){ 
+      $('#rebootPannel').trigger('click');
+    },
+    error: function(xhr, textStatus, errorThrown) {
+      alert('Error: ' + xhr.responseText);
+    }
+  });
+}
+
 $(document).ready(function() {
     drawGraph();
     loadConfig();

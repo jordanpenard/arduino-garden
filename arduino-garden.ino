@@ -353,10 +353,23 @@ void manual_watering() {
   }
 }
 
+void reboot() {
+
+  if (server.arg("password") != config.password) {
+    replyServerError("Wrong password");
+    
+  } else {
+    server.send(200, "text/plain", "Done");
+    delay(1000);
+    ESP.reset();
+  }
+}
+
 void setup_http_server() {
 
   server.on("/setConfig", set_config);
   server.on("/manualWatering", manual_watering);
+  server.on("/reboot", reboot);
   
   // Default handler for all URIs not defined above
   // Use it to read files from filesystem
@@ -563,6 +576,7 @@ void setup() {
   // Downloading the latest web pages from github on the branch web-live
   downloadAndSaveFile("/index.html","https://raw.githubusercontent.com/jordanpenard/arduino-garden/web-live/data/index.html");
   downloadAndSaveFile("/graph.js","https://raw.githubusercontent.com/jordanpenard/arduino-garden/web-live/data/graph.js");
+  downloadAndSaveFile("/graph.css","https://raw.githubusercontent.com/jordanpenard/arduino-garden/web-live/data/graph.css");
 
   log("------------");
   log("Setup is done\n");
