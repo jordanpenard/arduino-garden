@@ -1,6 +1,6 @@
 
 // IOs
-#define PUMP            16 // D0
+#define PUMP            16 // D0 - Active low
 #define MOISTURE_SENSOR A0
 
 // Watering parameters

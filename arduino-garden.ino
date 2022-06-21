@@ -551,12 +551,13 @@ void startSPIFFS() { // Start the SPIFFS and list all contents
 // 
 
 void stop_pump() {
-  digitalWrite(PUMP, LOW);
+  digitalWrite(PUMP, HIGH);
   digitalWrite(LED_BUILTIN, HIGH);
 }
 
 void start_pump() {
-  digitalWrite(PUMP, HIGH);
+  // The relay is active low with a pull up, so if something gets disconnected the pump is off
+  digitalWrite(PUMP, LOW);
   digitalWrite(LED_BUILTIN, LOW);
 }
 
@@ -589,7 +590,7 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(MOISTURE_SENSOR, INPUT);
 
-  digitalWrite(PUMP, LOW);  
+  digitalWrite(PUMP, HIGH);  
   digitalWrite(LED_BUILTIN, HIGH);  
 
   Serial.begin(115200);
@@ -629,7 +630,7 @@ void setup() {
 
 void gather_data() {
   int moisture_sensor = analogRead(MOISTURE_SENSOR);
-  bool pump_status = digitalRead(PUMP);
+  bool pump_status = !digitalRead(PUMP);
   read_H8120_sensor();
 
   log((String)"Moisture sensor : " + moisture_sensor + " - Pump : " + pump_status + " - Humidity : " + humidity + " - Temperature : " + temperature_C);
@@ -678,7 +679,7 @@ void loop() {
   }
 
   // Check if we need to switch the pump off
-  if (digitalRead(PUMP) && (get_unixtimestamp() >= stop_watering)) {
+  if (!digitalRead(PUMP) && (get_unixtimestamp() >= stop_watering)) {
     stop_pump();
   }
 
