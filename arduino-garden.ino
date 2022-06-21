@@ -11,6 +11,7 @@
 #include <FS.h>
 #include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h>
+#include <Wire.h>
 
 #include "config.h"
 
@@ -118,6 +119,42 @@ void set_config() {
     
     server.send(200, "text/plain", "Config saved");
   }
+}
+
+
+// -----------
+// H8120 I2C Humidity and temperature sensor
+
+float humidity;
+float temperature_C;
+
+int read_H8120_sensor(){
+
+  Wire.beginTransmission(H8120_I2C_ADDRESS);
+
+  Wire.requestFrom( (int) H8120_I2C_ADDRESS, (int) 4);
+  delay(100);
+  while (Wire.available() != 4);
+  int _humidity_hi = Wire.read();
+  int _humidity_lo = Wire.read();
+  int _temp_hi = Wire.read();
+  int _temp_lo = Wire.read();
+
+  Wire.endTransmission();
+
+  // Get the status (first two bits of _humidity_hi_)
+  int _status = (_humidity_hi >> 6);
+
+  if (_status == 0) {
+    // Calculate Relative Humidity
+    humidity = (float)(((unsigned int) (_humidity_hi & 0x3f) << 8) | _humidity_lo) * 100 / (pow(2,14) - 2);
+    // Calculate Temperature
+    temperature_C = (float) (((unsigned int) (_temp_hi << 6) + (_temp_lo >> 2)) / (pow(2, 14) - 2) * 165 - 40);
+  } else {
+    log((String)"H8120 - status : " + _status);
+  }
+
+  return _status;
 }
 
 
@@ -560,6 +597,8 @@ void setup() {
 
   Serial.println();
 
+  Wire.begin();
+  
   startSPIFFS();
 
   connect_to_wifi();
@@ -591,8 +630,9 @@ void setup() {
 void gather_data() {
   int moisture_sensor = analogRead(MOISTURE_SENSOR);
   bool pump_status = digitalRead(PUMP);
+  read_H8120_sensor();
 
-  log((String)"Moisture sensor : " + moisture_sensor + " - Pump : " + pump_status);
+  log((String)"Moisture sensor : " + moisture_sensor + " - Pump : " + pump_status + " - Humidity : " + humidity + " - Temperature : " + temperature_C);
 
   File dataLog = SPIFFS.open("/data.csv", "a"); // Write the time and the temperature to the csv file
   dataLog.print(get_unixtimestamp());
@@ -600,6 +640,10 @@ void gather_data() {
   dataLog.print(moisture_sensor);
   dataLog.print(',');
   dataLog.print(pump_status);
+  dataLog.print(',');
+  dataLog.print(humidity);
+  dataLog.print(',');
+  dataLog.print(temperature_C);
   dataLog.print('\n');
   dataLog.close();
 }

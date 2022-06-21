@@ -1,6 +1,6 @@
 
 // IOs
-#define PUMP            5 // D1
+#define PUMP            16 // D0
 #define MOISTURE_SENSOR A0
 
 // Watering parameters
@@ -13,3 +13,5 @@
 
 #define JSON_CONFIG_SIZE 512
 #define DEFAULT_PASSWORD "1234"
+
+#define H8120_I2C_ADDRESS 0x27

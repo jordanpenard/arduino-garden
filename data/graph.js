@@ -6,10 +6,14 @@ function drawGraph() {
         date_data = [];
         moisture_data = [];
         pump_data = [];
+        humidity_data = [];
+        temperature_data = [];
         for (const line of data_array) {
             date_data.push(line[0]*1000);
             moisture_data.push(line[1]);
             pump_data.push(line[2]);
+            humidity_data.push(line[3]);
+            temperature_data.push(line[4]);
         }
 
         const moisture_trace = {
@@ -22,18 +26,38 @@ function drawGraph() {
         };
           
         const pump_trace = {
-            type: "scatter",
-            mode: "lines",
-            name: 'Pump',
-            x: date_data,
-            y: pump_data,
-            yaxis: 'y2',
-            fill: 'tozeroy',
-            fillcolor: 'rgba(255, 99, 132, 0.2)',
-            line: {color: 'rgb(255, 99, 132)', shape: 'hv'}
+          type: "scatter",
+          mode: "lines",
+          name: 'Pump',
+          x: date_data,
+          y: pump_data,
+          yaxis: 'y2',
+          fill: 'tozeroy',
+          fillcolor: 'rgba(255, 99, 132, 0.2)',
+          line: {color: 'rgb(255, 99, 132)', shape: 'hv'}
         };
-        
-        const data = [moisture_trace, pump_trace];
+      
+        const humidity_trace = {
+          type: "scatter",
+          mode: "lines",
+          name: 'Air humidity (%)',
+          x: date_data,
+          y: humidity_data,
+          yaxis: 'y3',
+          line: {color: '#d62728'}
+        };
+    
+        const temperature_trace = {
+          type: "scatter",
+          mode: "lines",
+          name: 'Air temperature (C)',
+          x: date_data,
+          y: temperature_data,
+          yaxis: 'y4',
+          line: {color: '#ff7f0e'}
+        };
+  
+        const data = [moisture_trace, pump_trace, humidity_trace, temperature_trace];
 
         var OneDaysAgo = new Date(new Date().setDate(new Date().getDate() - 1));
 
@@ -73,15 +97,36 @@ function drawGraph() {
               type: 'date'
             },
             yaxis: {
+              title: 'Soil moisture',
+              titlefont: {color: 'rgb(54, 162, 235)'},
+              tickfont: {color: 'rgb(54, 162, 235)'},
               autorange: true,
               type: 'linear'
             },
             yaxis2: {
               autorange: false,
               range: [0, 1],
-              side: 'right',
               overlaying: 'y',
+              showline: false,
+              showticklabels: false,
               type: 'linear'
+            },
+            yaxis3: {
+              title: 'Air humidity (%)',
+              titlefont: {color: '#d62728'},
+              tickfont: {color: '#d62728'},
+              autorange: true,
+              overlaying: 'y',
+              side: 'right'
+            },
+            yaxis4: {
+              title: 'Air temperature (C)',
+              titlefont: {color: '#ff7f0e'},
+              tickfont: {color: '#ff7f0e'},
+              autorange: true,
+              overlaying: 'y',
+              side: 'right',
+              position: 0.85
             }
         };
           
