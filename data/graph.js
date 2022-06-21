@@ -94,7 +94,7 @@ function drawGraph() {
                   {step: 'all'}
                 ]},
               rangeslider: {autorange: true},
-              domain: [0, 0.7],
+              domain: [0, 0.88],
               type: 'date'
             },
             yaxis: {
@@ -127,7 +127,7 @@ function drawGraph() {
               autorange: true,
               overlaying: 'y',
               side: 'right',
-              position: 0.85
+              position: 0.95
             }
         };
           
