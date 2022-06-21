@@ -94,12 +94,10 @@ function drawGraph() {
                   {step: 'all'}
                 ]},
               rangeslider: {autorange: true},
-              domain: [0, 0.88],
+              domain: [0, 0.95],
               type: 'date'
             },
             yaxis: {
-              title: 'Soil moisture',
-              titlefont: {color: 'rgb(54, 162, 235)'},
               tickfont: {color: 'rgb(54, 162, 235)'},
               autorange: true,
               type: 'linear'
@@ -109,25 +107,23 @@ function drawGraph() {
               range: [0, 1],
               overlaying: 'y',
               showline: false,
+              showgrid: false,
               showticklabels: false,
               type: 'linear'
             },
             yaxis3: {
-              title: 'Air humidity (%)',
-              titlefont: {color: 'rgb(44, 160, 44)'},
               tickfont: {color: 'rgb(44, 160, 44)'},
               autorange: true,
               overlaying: 'y',
               side: 'right'
             },
             yaxis4: {
-              title: 'Air temperature (C)',
-              titlefont: {color: '#ff7f0e'},
               tickfont: {color: '#ff7f0e'},
               autorange: true,
+              showgrid: false,
               overlaying: 'y',
               side: 'right',
-              position: 0.95
+              position: 1
             }
         };
           
