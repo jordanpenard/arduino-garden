@@ -44,7 +44,7 @@ function drawGraph() {
           x: date_data,
           y: humidity_data,
           yaxis: 'y3',
-          line: {color: '#d62728'}
+          line: {color: 'rgb(44, 160, 44)'}
         };
     
         const temperature_trace = {
@@ -94,6 +94,7 @@ function drawGraph() {
                   {step: 'all'}
                 ]},
               rangeslider: {autorange: true},
+              domain: [0, 0.7],
               type: 'date'
             },
             yaxis: {
@@ -113,8 +114,8 @@ function drawGraph() {
             },
             yaxis3: {
               title: 'Air humidity (%)',
-              titlefont: {color: '#d62728'},
-              tickfont: {color: '#d62728'},
+              titlefont: {color: 'rgb(44, 160, 44)'},
+              tickfont: {color: 'rgb(44, 160, 44)'},
               autorange: true,
               overlaying: 'y',
               side: 'right'
