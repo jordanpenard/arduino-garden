@@ -148,8 +148,8 @@ function saveConfig() {
   for (var key of ["watering_duration_in_seconds", "moisture_threashold", "history_steps_in_seconds", "password"]) {
     request += key + "=" + $('#configPannel #'+key).val() + "&";
   }
-  request += "check_for_moisture=" + $("#configPannel #check_for_moisture").prop("checked");
-  request += "watering_hour=" + $("#configPannel #watering_time").val().split(":")[0];
+  request += "check_for_moisture=" + $("#configPannel #check_for_moisture").prop("checked") + "&";
+  request += "watering_hour=" + $("#configPannel #watering_time").val().split(":")[0] + "&";
   request += "watering_minute=" + $("#configPannel #watering_time").val().split(":")[1];
 
   $.ajax({
