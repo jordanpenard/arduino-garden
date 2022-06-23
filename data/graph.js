@@ -133,18 +133,27 @@ function drawGraph() {
 
 function loadConfig() {
     $.get("config.json", function( config_json ) {
-        for (var key in config_json) {   
-            $('#'+key).val(config_json[key]);
-        }
+      $("#configPannel #check_for_moisture").prop("checked", config_json[key]);
+      $("#configPannel #watering_time").val(String(config_json["watering_hour"]).padStart(places, '0') + ":" + String(config_json["watering_minute"]).padStart(places, '0'));
+      config_json.delete("check_for_moisture")
+      config_json.delete("watering_hour")
+      config_json.delete("watering_minute")
+      for (var key in config_json) {   
+          $('#configPannel #'+key).val(config_json[key]);
+      }
     });
-}
+    check_for_moisture_change();
+  }
 
 function saveConfig() {
   request = "setConfig?";
 
-  for (var key of ["watering_intervals_in_hours", "watering_duration_in_seconds", "moisture_threashold", "history_steps_in_seconds", "password"]) {
+  for (var key of ["watering_duration_in_seconds", "moisture_threashold", "history_steps_in_seconds", "password"]) {
     request += key + "=" + $('#configPannel #'+key).val() + "&";
   }
+  request += "check_for_moisture=" + $("#configPannel #check_for_moisture").prop("checked");
+  request += "watering_hour=" + $("#configPannel #watering_time").val().split(":")[0];
+  request += "watering_minute=" + $("#configPannel #watering_time").val().split(":")[1];
 
   $.ajax({
     url: request,
@@ -212,7 +221,13 @@ function reboot() {
   });
 }
 
+function check_for_moisture_change() {
+  $("#configPannel #moisture_threashold").prop("disabled", !$("#configPannel #check_for_moisture").prop("checked"))
+}
+
 $(document).ready(function() {
-    drawGraph();
-    loadConfig();
+  drawGraph();
+  loadConfig();
+
+  $('#configPannel #check_for_moisture').change(check_for_moisture_change);
 });

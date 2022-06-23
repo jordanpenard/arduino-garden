@@ -28,8 +28,10 @@ void log(String data) {
 // Config
 
 struct Config {
-  uint32_t watering_intervals_in_hours;
+  uint32_t watering_hour;
+  uint32_t watering_minute;
   uint32_t watering_duration_in_seconds;
+  bool check_for_moisture;
   uint32_t moisture_threashold;
   uint32_t history_steps_in_seconds;
   char password[64];
@@ -54,10 +56,12 @@ void loadConfiguration() {
     log(F("Failed to read file, using default configuration"));
 
   // Copy values from the JsonDocument to the Config
-  config.watering_intervals_in_hours = doc["watering_intervals_in_hours"] | WATERING_INTERVALS_IN_HOURS;
+  config.watering_hour = doc["watering_hour"] | WATERING_HOUR;
+  config.watering_minute = doc["watering_minute"] | WATERING_MINUTE;
   config.watering_duration_in_seconds = doc["watering_duration_in_seconds"] | WATERING_DURATION_SEC;
   config.moisture_threashold = doc["moisture_threashold"] | MOISTURE_THREASHOLD;
   config.history_steps_in_seconds = doc["history_steps_in_seconds"] | HISTORY_STEP_IN_SEC;
+  config.check_for_moisture = doc["check_for_moisture"] | CHECK_FOR_MOISTURE;
   strlcpy(config.password, 
           doc["password"] | DEFAULT_PASSWORD,
           sizeof(config.password));
@@ -82,9 +86,11 @@ void saveConfiguration() {
   StaticJsonDocument<JSON_CONFIG_SIZE> doc;
 
   // Set the values in the document
-  doc["watering_intervals_in_hours"] = config.watering_intervals_in_hours;
+  doc["watering_hour"] = config.watering_hour;
+  doc["watering_minute"] = config.watering_minute;
   doc["watering_duration_in_seconds"] = config.watering_duration_in_seconds;
   doc["moisture_threashold"] = config.moisture_threashold;
+  doc["check_for_moisture"] = config.check_for_moisture;
   doc["history_steps_in_seconds"] = config.history_steps_in_seconds;
   doc["password"] = config.password;
 
@@ -104,8 +110,10 @@ void set_config() {
     
   } else {
 
-    if (server.arg("watering_intervals_in_hours") != "")
-      config.watering_intervals_in_hours = server.arg("watering_intervals_in_hours").toInt();
+    if (server.arg("watering_hour") != "")
+      config.watering_hour = server.arg("watering_hour").toInt();
+    if (server.arg("watering_minute") != "")
+      config.watering_minute = server.arg("watering_minute").toInt();
     if (server.arg("watering_duration_in_seconds") != "")
       config.watering_duration_in_seconds = server.arg("watering_duration_in_seconds").toInt();
     if (server.arg("moisture_threashold") != "")
@@ -114,6 +122,8 @@ void set_config() {
       config.history_steps_in_seconds = server.arg("history_steps_in_seconds").toInt();
     if (server.arg("new_password") != "")
       server.arg("new_password").toCharArray(config.password, sizeof(config.password));
+    if (server.arg("check_for_moisture") != "")
+      config.check_for_moisture = server.arg("check_for_moisture") == "true" ? true : false;
 
     saveConfiguration();
     
@@ -353,10 +363,12 @@ bool handleFileRead(String path) { // send the right file to the client (if it e
     StaticJsonDocument<JSON_CONFIG_SIZE> doc;
 
     // Set the values in the document
-    doc["watering_intervals_in_hours"] = config.watering_intervals_in_hours;
+    doc["watering_hour"] = config.watering_hour;
+    doc["watering_minute"] = config.watering_minute;
     doc["watering_duration_in_seconds"] = config.watering_duration_in_seconds;
     doc["moisture_threashold"] = config.moisture_threashold;
     doc["history_steps_in_seconds"] = config.history_steps_in_seconds;
+    doc["check_for_moisture"] = config.check_for_moisture;
 
     String output;
     
@@ -561,6 +573,10 @@ void start_pump() {
   digitalWrite(LED_BUILTIN, LOW);
 }
 
+bool is_pump_on() {
+  return !digitalRead(PUMP);
+}
+
 void startOTA() {
   ArduinoOTA.setHostname("arduino-garden");
   ArduinoOTA.setPassword("arduino-garden");
@@ -621,7 +637,7 @@ void setup() {
   log("------------");
   log("Setup is done\n");
   log("Internet time : " + get_formated_time());
-  log((String)"Watering intervals in hours : " + config.watering_intervals_in_hours);
+  log((String)"Watering time : " + config.watering_hour + ":" + config.watering_minute);
   log((String)"Watering duration in seconds : " + config.watering_duration_in_seconds);
   log((String)"Moisture threashold : " + config.moisture_threashold);
   log((String)"History steps in seconds : " + config.history_steps_in_seconds);
@@ -630,7 +646,7 @@ void setup() {
 
 void gather_data() {
   int moisture_sensor = analogRead(MOISTURE_SENSOR);
-  bool pump_status = !digitalRead(PUMP);
+  bool pump_status = is_pump_on();
   read_H8120_sensor();
 
   log((String)"Moisture sensor : " + moisture_sensor + " - Pump : " + pump_status + " - Humidity : " + humidity + " - Temperature : " + temperature_C);
@@ -651,7 +667,7 @@ void gather_data() {
 
 void watering_check() {
   last_watering = get_unixtimestamp();
-  if (analogRead(MOISTURE_SENSOR) > config.moisture_threashold){
+  if (!config.check_for_moisture || analogRead(MOISTURE_SENSOR) > config.moisture_threashold){
     log("It's watering time");
     start_pump();
     stop_watering = get_unixtimestamp() + config.watering_duration_in_seconds;
@@ -679,12 +695,12 @@ void loop() {
   }
 
   // Check if we need to switch the pump off
-  if (!digitalRead(PUMP) && (get_unixtimestamp() >= stop_watering)) {
+  if (is_pump_on() && (get_unixtimestamp() >= stop_watering)) {
     stop_pump();
   }
 
   // Time to check if the plants need watering
-  if (get_unixtimestamp() > last_watering + (config.watering_intervals_in_hours * 60 * 60)) {
+  if (!is_pump_on() && (get_unixtimestamp() % 3600 == config.watering_hour) && (get_unixtimestamp() % 60 == config.watering_minute)) {
     watering_check();
   }
 

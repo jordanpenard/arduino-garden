@@ -36,16 +36,22 @@
                 </div>
                 <div class="modal-body">
                   <form style="margin: 20 0;">
+
                     <div class="form-floating mb-3">
-                      <input class="form-control" type="text" id="watering_intervals_in_hours" name="watering_intervals_in_hours" placeholder="Watering interval in hours">
-                      <label for="watering_intervals_in_hours">Watering interval in hours</label>
+                      <input class="form-control" type="time" id="watering_time" name="watering_time" placeholder="Watering time">
+                      <label for="watering_time">Watering time</label>
                     </div>
-  
+
                     <div class="form-floating mb-3">
                       <input class="form-control" type="text" id="watering_duration_in_seconds" name="watering_duration_in_seconds" placeholder="Watering duration in seconds">
                       <label for="watering_duration_in_seconds">Watering duration in seconds</label>
                     </div>
   
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" role="switch" id="check_for_moisture">
+                      <label class="form-check-label" for="check_for_moisture">Check for moisture</label>
+                    </div>
+
                     <div class="form-floating mb-3">
                       <input class="form-control" type="text" id="moisture_threashold" name="moisture_threashold" placeholder="Soil moisture threashold">
                       <label for="moisture_threashold">Soil moisture threashold</label>
