@@ -138,8 +138,8 @@ function loadConfig() {
       $('#configPannel #history_steps_in_seconds').val(config_json["history_steps_in_seconds"]);
       $('#configPannel #moisture_threashold').val(config_json["moisture_threashold"]);
       $('#configPannel #watering_duration_in_seconds').val(config_json["watering_duration_in_seconds"]);
+      check_for_moisture_change();
     });
-    check_for_moisture_change();
   }
 
 function saveConfig() {
