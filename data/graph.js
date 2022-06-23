@@ -133,14 +133,11 @@ function drawGraph() {
 
 function loadConfig() {
     $.get("config.json", function( config_json ) {
-      $("#configPannel #check_for_moisture").prop("checked", config_json[key]);
-      $("#configPannel #watering_time").val(String(config_json["watering_hour"]).padStart(places, '0') + ":" + String(config_json["watering_minute"]).padStart(places, '0'));
-      config_json.delete("check_for_moisture")
-      config_json.delete("watering_hour")
-      config_json.delete("watering_minute")
-      for (var key in config_json) {   
-          $('#configPannel #'+key).val(config_json[key]);
-      }
+      $("#configPannel #check_for_moisture").prop("checked", config_json["check_for_moisture"]);
+      $("#configPannel #watering_time").val(String(config_json["watering_hour"]).padStart(2, '0') + ":" + String(config_json["watering_minute"]).padStart(2, '0'));
+      $('#configPannel #history_steps_in_seconds').val(config_json["history_steps_in_seconds"]);
+      $('#configPannel #moisture_threashold').val(config_json["moisture_threashold"]);
+      $('#configPannel #watering_duration_in_seconds').val(config_json["watering_duration_in_seconds"]);
     });
     check_for_moisture_change();
   }
