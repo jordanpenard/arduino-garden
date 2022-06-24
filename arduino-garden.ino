@@ -700,7 +700,7 @@ void loop() {
   }
 
   // Time to check if the plants need watering
-  if (!is_pump_on() && (get_unixtimestamp() % 3600 == config.watering_hour) && (get_unixtimestamp() % 60 == config.watering_minute)) {
+  if (!is_pump_on() && ((get_unixtimestamp() % (60*60*24))/(60*60) == config.watering_hour) && ((get_unixtimestamp() % (60*60))/60 == config.watering_minute)) {
     watering_check();
   }
 

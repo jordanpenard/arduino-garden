@@ -128,6 +128,7 @@ function drawGraph() {
         };
           
         Plotly.newPlot('myChart', data, layout);
+        $(".rangeselector .button")[0].__onclick();
     });
 }
 
